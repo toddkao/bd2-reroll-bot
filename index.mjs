@@ -83,6 +83,20 @@ async function captureScreenToCanvas() {
   return canvas;
 }
 
+function saveCanvasImage(canvas, label = 'screenshot') {
+  const outDir = path.join(__dirname, 'screenshots');
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir);
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filePath = path.join(outDir, `${label}-${timestamp}.png`);
+
+  const out = fs.createWriteStream(filePath);
+  const stream = canvas.createPNGStream();
+  stream.pipe(out);
+}
+
 async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, delay = 300) {
   await waitForOpenCV();
 
@@ -185,10 +199,12 @@ const pullForMe = async () => {
     if (atLeastOneFiveStar) {
       await new Promise(resolve => setTimeout(resolve, 1_000));
       fiveStarsPulled = await find("5star.png");
+      const canvas = await captureScreenToCanvas();
+      saveCanvasImage(canvas, `5star-${fiveStarsPulled}`);
       console.log('five stars pulled', fiveStarsPulled);
     }
 
-    if (fiveStarsPulled < 2) {
+    if (fiveStarsPulled < 3) {
       pullForMe();
     }
 
