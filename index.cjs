@@ -73,23 +73,19 @@ async function captureScreenToCanvas() {
 function saveCanvasImage(canvas, label = 'screenshot') {
   const outDir = path.join(process.cwd(), 'screenshots');
   if (!fs.existsSync(outDir)) {
-    fs.mkdirSync(outDir);
+    fs.mkdirSync(outDir, { recursive: true });
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filePath = path.join(outDir, `${label}-${timestamp}.png`);
 
-  const out = fs.createWriteStream(filePath);
-  const stream = canvas.createPNGStream();
-  stream.pipe(out);
-
-  out.on('finish', () => {
+  try {
+    const buffer = canvas.encodeSync('png'); // ✅ this returns a Node.js Buffer
+    fs.writeFileSync(filePath, buffer);
     console.log(`✅ Screenshot saved: ${filePath}`);
-  });
-
-  out.on('error', (err) => {
-    console.error('❌ Failed to write screenshot:', err);
-  });
+  } catch (err) {
+    console.error('❌ Failed to save screenshot:', err);
+  }
 }
 
 async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, delay = 300) {
@@ -166,8 +162,8 @@ const find = async (fileName, saveImageIfAtLeastNumberFound) => {
   const numberFound = await matchTemplatesOpenCV(canvas, fileName, false);
 
   if (saveImageIfAtLeastNumberFound && numberFound >= saveImageIfAtLeastNumberFound) {
-    saveCanvasImage(canvas, `5star-${fiveStarsPulled}`);
-    console.log('five stars pulled', fiveStarsPulled);
+    saveCanvasImage(canvas, `5star-${numberFound}`);
+    console.log('five stars pulled', numberFound);
   }
   return numberFound;
 };
@@ -212,8 +208,6 @@ const pullForMe = async () => {
     
     const key = String(fiveStarsPulled);
     stats.fiveStars[key] = (stats.fiveStars[key] || 0) + 1;
-
-    console.log(stats);
 
     saveStats(stats);
 
