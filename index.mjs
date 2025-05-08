@@ -19,6 +19,14 @@ const __dirname = dirname(__filename);
 const REGION = { x: 0, y: 0, width: 800, height: 600 };
 const TEMPLATE_DIR = path.join(__dirname, 'templates');
 
+function getCurrentHourKey() {
+  const now = new Date();
+  const date = now.toLocaleDateString('en-US'); // e.g., 5/8/2025
+  let hour = now.getHours();
+  const suffix = hour >= 12 ? 'pm' : 'am';
+  hour = hour % 12 || 12; // Convert to 12-hour format
+  return `${date}-${hour}${suffix}`;
+}
 
 const LOG_FILE = path.join(__dirname, 'log.txt');
 
@@ -27,7 +35,7 @@ function loadStats() {
     const content = fs.readFileSync(LOG_FILE, 'utf-8');
     return JSON.parse(content);
   } catch {
-    return { pulls: 0, fiveStars: undefined };
+    return { pulls: 0, fiveStars: {}, hourlyPulls: {} };
   }
 }
 
@@ -158,6 +166,11 @@ const pullForMe = async () => {
 
     if (confirm) {
       stats.pulls += 1;
+      const hourKey = getCurrentHourKey();
+      if (!stats.hourlyPulls) {
+        stats.hourlyPulls = {};
+      }
+      stats.hourlyPulls[hourKey] = (stats.hourlyPulls[hourKey] || 0) + 1;
     }
 
     const atLeastOneFiveStar = await find("eleanor.png");
@@ -170,7 +183,7 @@ const pullForMe = async () => {
 
 
     if (atLeastOneFiveStar) {
-      await new Promise(resolve => setTimeout(resolve, 5_000));
+      await new Promise(resolve => setTimeout(resolve, 1_000));
       fiveStarsPulled = await find("5star.png");
       console.log('five stars pulled', fiveStarsPulled);
     }
