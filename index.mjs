@@ -27,7 +27,7 @@ function loadStats() {
     const content = fs.readFileSync(LOG_FILE, 'utf-8');
     return JSON.parse(content);
   } catch {
-    return { pulls: 0, fiveStars: 0 };
+    return { pulls: 0, fiveStars: undefined };
   }
 }
 
@@ -148,10 +148,17 @@ const find = async (fileName) => {
   return await matchTemplatesOpenCV(canvas, fileName, false);
 };
 
+const stats = loadStats();
+console.log(stats);
+
 const pullForMe = async () => {
   try {
     await findAndClick("draw.png");
-    await findAndClick("confirm.png");
+    const confirm = await findAndClick("confirm.png");
+
+    if (confirm) {
+      stats.pulls += 1;
+    }
 
     const atLeastOneFiveStar = await find("eleanor.png");
     let fiveStarsPulled = 0;
@@ -163,7 +170,7 @@ const pullForMe = async () => {
 
 
     if (atLeastOneFiveStar) {
-      await new Promise(resolve => setTimeout(resolve, 1_000));
+      await new Promise(resolve => setTimeout(resolve, 5_000));
       fiveStarsPulled = await find("5star.png");
       console.log('five stars pulled', fiveStarsPulled);
     }
@@ -172,9 +179,6 @@ const pullForMe = async () => {
       pullForMe();
     }
 
-    const stats = loadStats();
-    stats.pulls += 1;
-    
     if (!stats.fiveStars) {
       stats.fiveStars = {};
     }
