@@ -1,0 +1,22 @@
+{
+  "name": "bd2-reroll-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.mjs",
+  "dependencies": {
+    "@techstark/opencv-js": "^4.10.0-release.1",
+    "canvas": "^3.1.0",
+    "jimp": "^1.6.0",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
+    "robotjs": "^0.6.0",
+    "tesseract.js": "^6.0.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "start": "node index.mjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
