@@ -84,7 +84,7 @@ async function captureScreenToCanvas() {
 }
 
 function saveCanvasImage(canvas, label = 'screenshot') {
-  const outDir = path.join(__dirname, 'screenshots');
+  const outDir = path.join(__dirname, 'superfect');
   if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir);
   }
