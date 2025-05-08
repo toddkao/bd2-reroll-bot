@@ -20,6 +20,21 @@ const REGION = { x: 0, y: 0, width: 800, height: 600 };
 const TEMPLATE_DIR = path.join(__dirname, 'templates');
 
 
+const LOG_FILE = path.join(__dirname, 'log.txt');
+
+function loadStats() {
+  try {
+    const content = fs.readFileSync(LOG_FILE, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return { pulls: 0, fiveStars: 0 };
+  }
+}
+
+function saveStats(stats) {
+  fs.writeFileSync(LOG_FILE, JSON.stringify(stats, null, 2), 'utf-8');
+}
+
 let opencvReady = false;
 
 async function waitForOpenCV() {
@@ -156,6 +171,18 @@ const pullForMe = async () => {
     if (fiveStarsPulled < 2) {
       pullForMe();
     }
+
+    const stats = loadStats();
+    stats.pulls += 1;
+    
+    if (!stats.fiveStars) {
+      stats.fiveStars = {};
+    }
+    
+    const key = String(fiveStarsPulled);
+    stats.fiveStars[key] = (stats.fiveStars[key] || 0) + 1;
+    
+    saveStats(stats);
 
   } catch (err) {
     console.error(err);
