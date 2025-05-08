@@ -31,7 +31,6 @@ async function waitForOpenCV() {
     const originalInit = cv.onRuntimeInitialized;
     cv.onRuntimeInitialized = () => {
       originalInit?.(); // call any existing initializer if present
-      console.log("OpenCV is ready.");
       opencvReady = true;
       resolve();
     };
@@ -39,7 +38,6 @@ async function waitForOpenCV() {
 }
 
 async function captureScreenToCanvas() {
-  console.log('Capturing screen...');
   const screen = robot.screen.capture();
 
   const canvas = createCanvas(screen.width, screen.height);
@@ -62,18 +60,8 @@ async function captureScreenToCanvas() {
   return canvas;
 }
 
-async function runOCRFromCanvas(canvas) {
-  console.log('Running OCR with Tesseract...');
-  const buffer = canvas.toBuffer('image/png');
-  const { data: { text } } = await Tesseract.recognize(buffer, 'eng', {
-    logger: m => console.log(m.status, m.progress?.toFixed(2) || '')
-  });
-  console.log('\n=== OCR Result ===\n', text);
-}
-
 async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, delay = 500) {
   await waitForOpenCV();
-  console.log('Matching templates using OpenCV...');
 
   const ctx = canvas.getContext('2d');
   const screenImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -106,13 +94,9 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
       if (maxVal >= threshold) {
         const centerX = maxLoc.x + templateMat.cols / 2;
         const centerY = maxLoc.y + templateMat.rows / 2;
-        console.log(`Clicked best match for ${file} at (${centerX}, ${centerY}) with score ${maxVal.toFixed(2)}`);
         robot.moveMouse(centerX, centerY);
         robot.mouseClick();
-        await new Promise(resolve => setTimeout(resolve, delay));
         totalMatches = 1;
-      } else {
-        console.log(`No strong match for ${file} (score: ${maxVal.toFixed(2)})`);
       }
     } else {
       // Find all matches above threshold
@@ -121,13 +105,10 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
         if (maxVal < threshold) break;
 
         totalMatches++;
-        console.log(`Found match ${totalMatches} for ${file} at (${maxLoc.x}, ${maxLoc.y}) score ${maxVal.toFixed(2)}`);
 
         const point1 = new cv.Point(maxLoc.x, maxLoc.y);
         const point2 = new cv.Point(maxLoc.x + templateMat.cols, maxLoc.y + templateMat.rows);
         cv.rectangle(result, point1, point2, new cv.Scalar(0), -1); // mask matched area
-
-        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
 
@@ -136,6 +117,9 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
   }
 
   screenMat.delete();
+
+  await new Promise(resolve => setTimeout(resolve, delay));
+
   return totalMatches;
 }
 
@@ -144,9 +128,9 @@ const findAndClick = async (fileName) => {
   return await matchTemplatesOpenCV(canvas, fileName, true);
 };
 
-const find = async (fileName) => {
+const find = async (fileName, timeout = 500) => {
   const canvas = await captureScreenToCanvas();
-  return await matchTemplatesOpenCV(canvas, fileName, false, 1_000);
+  return await matchTemplatesOpenCV(canvas, fileName, false, timeout);
 };
 
 const pullForMe = async () => {
@@ -154,16 +138,21 @@ const pullForMe = async () => {
     await findAndClick("draw.png");
     await findAndClick("confirm.png");
 
-    let next = await findAndClick("next.png");
-    console.log('next found', next);
+    const atLeastOneFiveStar = await find("eleanor.png");
+    let fiveStarsPulled = 0;
+
+    let next = await findAndClick("next.png") || await findAndClick("darknext.png");
     while (next !== 0) {
-      next = await findAndClick("next.png");
+      next = await findAndClick("next.png") || await findAndClick("darknext.png")
     }
-    const fiveStar = await find("5star.png");
 
-    console.log('5 star found', fiveStar);
 
-    if (fiveStar < 2) {
+    if (atLeastOneFiveStar) {
+      fiveStarsPulled = await find("5star.png", 2_000);
+      console.log('five stars pulled', fiveStarsPulled);
+    }
+
+    if (fiveStarsPulled < 2) {
       pullForMe();
     }
 
