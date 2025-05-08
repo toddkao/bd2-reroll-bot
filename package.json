@@ -1,20 +1,19 @@
 {
   "name": "bd2-reroll-bot",
   "version": "1.0.0",
+  "type": "commonjs",
   "description": "",
-  "main": "index.mjs",
+  "main": "index.cjs",
+  "bin": "index.cjs",
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.70",
     "@techstark/opencv-js": "^4.10.0-release.1",
-    "canvas": "^3.1.0",
-    "jimp": "^1.6.0",
-    "pixelmatch": "^7.1.0",
-    "pngjs": "^7.0.0",
-    "robotjs": "^0.6.0",
-    "tesseract.js": "^6.0.1"
+    "robotjs": "^0.6.0"
   },
   "devDependencies": {},
   "scripts": {
-    "start": "node index.mjs",
+    "start": "node index.cjs",
+    "build": "pkg . --targets node18-win-x64 --output dist/app",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",

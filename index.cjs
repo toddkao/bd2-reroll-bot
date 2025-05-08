@@ -1,23 +1,10 @@
-// File: index.mjs
+const robot = require('robotjs');
+const path = require('path');
+const fs = require('fs');
+const cv = require('@techstark/opencv-js');
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
 
-import robot from 'robotjs';
-import { Jimp, rgbaToInt } from 'jimp';
-import Tesseract from 'tesseract.js';
-import path from 'path';
-import fs from 'fs';
-import { PNG } from 'pngjs';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-import cv from '@techstark/opencv-js';
-import { createCanvas, loadImage } from 'canvas';
-import { match } from 'assert';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Configuration
-const REGION = { x: 0, y: 0, width: 800, height: 600 };
-const TEMPLATE_DIR = path.join(__dirname, 'templates');
+const TEMPLATE_DIR = path.join(process.cwd(), 'templates');
 
 function getCurrentHourKey() {
   const now = new Date();
@@ -28,7 +15,7 @@ function getCurrentHourKey() {
   return `${date}-${hour}${suffix}`;
 }
 
-const LOG_FILE = path.join(__dirname, 'log.txt');
+const LOG_FILE = path.join(process.cwd(), 'log.txt');
 
 function loadStats() {
   try {
@@ -84,7 +71,7 @@ async function captureScreenToCanvas() {
 }
 
 function saveCanvasImage(canvas, label = 'screenshot') {
-  const outDir = path.join(__dirname, 'superfect');
+  const outDir = path.join(process.cwd(), 'screenshots');
   if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir);
   }
@@ -95,6 +82,14 @@ function saveCanvasImage(canvas, label = 'screenshot') {
   const out = fs.createWriteStream(filePath);
   const stream = canvas.createPNGStream();
   stream.pipe(out);
+
+  out.on('finish', () => {
+    console.log(`✅ Screenshot saved: ${filePath}`);
+  });
+
+  out.on('error', (err) => {
+    console.error('❌ Failed to write screenshot:', err);
+  });
 }
 
 async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, delay = 300) {
@@ -114,7 +109,8 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
 
   for (const file of files) {
     const templatePath = path.join(TEMPLATE_DIR, file);
-    const templateImage = await loadImage(templatePath);
+    const fileBuffer = fs.readFileSync(templatePath);
+    const templateImage = await loadImage(fileBuffer);
     const templateCanvas = createCanvas(templateImage.width, templateImage.height);
     const tCtx = templateCanvas.getContext('2d');
     tCtx.drawImage(templateImage, 0, 0);
@@ -165,13 +161,18 @@ const findAndClick = async (fileName) => {
   return await matchTemplatesOpenCV(canvas, fileName, true);
 };
 
-const find = async (fileName) => {
+const find = async (fileName, saveImageIfAtLeastNumberFound) => {
   const canvas = await captureScreenToCanvas();
-  return await matchTemplatesOpenCV(canvas, fileName, false);
+  const numberFound = await matchTemplatesOpenCV(canvas, fileName, false);
+
+  if (saveImageIfAtLeastNumberFound && numberFound >= saveImageIfAtLeastNumberFound) {
+    saveCanvasImage(canvas, `5star-${fiveStarsPulled}`);
+    console.log('five stars pulled', fiveStarsPulled);
+  }
+  return numberFound;
 };
 
 const stats = loadStats();
-console.log(stats);
 
 const pullForMe = async () => {
   try {
@@ -198,10 +199,7 @@ const pullForMe = async () => {
 
     if (atLeastOneFiveStar) {
       await new Promise(resolve => setTimeout(resolve, 1_000));
-      fiveStarsPulled = await find("5star.png");
-      const canvas = await captureScreenToCanvas();
-      saveCanvasImage(canvas, `5star-${fiveStarsPulled}`);
-      console.log('five stars pulled', fiveStarsPulled);
+      fiveStarsPulled = await find("5star.png", 1);
     }
 
     if (fiveStarsPulled < 3) {
@@ -214,7 +212,9 @@ const pullForMe = async () => {
     
     const key = String(fiveStarsPulled);
     stats.fiveStars[key] = (stats.fiveStars[key] || 0) + 1;
-    
+
+    console.log(stats);
+
     saveStats(stats);
 
   } catch (err) {
