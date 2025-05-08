@@ -60,7 +60,7 @@ async function captureScreenToCanvas() {
   return canvas;
 }
 
-async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, delay = 500) {
+async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, delay = 300) {
   await waitForOpenCV();
 
   const ctx = canvas.getContext('2d');
@@ -128,9 +128,9 @@ const findAndClick = async (fileName) => {
   return await matchTemplatesOpenCV(canvas, fileName, true);
 };
 
-const find = async (fileName, timeout = 500) => {
+const find = async (fileName) => {
   const canvas = await captureScreenToCanvas();
-  return await matchTemplatesOpenCV(canvas, fileName, false, timeout);
+  return await matchTemplatesOpenCV(canvas, fileName, false);
 };
 
 const pullForMe = async () => {
@@ -148,7 +148,8 @@ const pullForMe = async () => {
 
 
     if (atLeastOneFiveStar) {
-      fiveStarsPulled = await find("5star.png", 2_000);
+      await new Promise(resolve => setTimeout(resolve, 1_000));
+      fiveStarsPulled = await find("5star.png");
       console.log('five stars pulled', fiveStarsPulled);
     }
 
