@@ -1,3 +1,5 @@
+const { logWithStyle } = require('./log.cjs');
+
 const path = require('path');
 const fs = require('fs');
 
@@ -15,8 +17,13 @@ function getCurrentHourKey() {
 const loadStats = () => {
   try {
     const content = fs.readFileSync(LOG_FILE, 'utf-8');
-    console.log(JSON.parse(content));
-    return JSON.parse(content);
+    const stats = JSON.parse(content);
+
+    console.log('loaded log file');
+
+    logWithStyle(JSON.stringify(stats, null, 2), { fg: 'green' });
+
+    return stats;
   } catch {
     return { pulls: 0, fiveStars: {}, hourlyPulls: {} };
   }

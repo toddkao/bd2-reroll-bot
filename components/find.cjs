@@ -1,3 +1,5 @@
+const { logWithStyle } = require('./log.cjs');
+
 const robot = require('robotjs');
 const cv = require('@techstark/opencv-js');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
@@ -11,17 +13,20 @@ const fs = require('fs');
 
 const TEMPLATE_DIR = path.join(process.cwd(), 'templates');
 
-const keyboardListener = new GlobalKeyboardListener();
-var opencvReady = false;
-var isRunning = true;
-var stats = loadStats();
-var settings = loadSettings();
-
-keyboardListener.addListener((e) => {
+new GlobalKeyboardListener({
+  windows: {
+    serverPath: path.join(process.cwd(), 'WinKeyServer.exe')
+  }
+}).addListener((e) => {
   if (e.name === 'ESCAPE') {
     isRunning = false;
   }
 });
+
+var opencvReady = false;
+var isRunning = true;
+var stats = loadStats();
+var settings = loadSettings();
 
 async function waitForOpenCV() {
   if (opencvReady) {
@@ -107,7 +112,9 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
     if (click) {
       // Just click once on the best match
       const { maxVal, maxLoc } = cv.minMaxLoc(result);
-      console.log(`${targetFile} found with :${maxVal} match`);
+      if (settings.debug) {
+        logWithStyle(`${targetFile} found with :${maxVal} match`, { fg: 'yellow' });
+      }
       if (maxVal >= threshold) {
         const centerX = maxLoc.x + templateMat.cols / 2;
         const centerY = maxLoc.y + templateMat.rows / 2;
@@ -119,10 +126,12 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
       // Find all matches above threshold
       while (true) {
         const { maxVal, maxLoc } = cv.minMaxLoc(result);
+        if (settings.debug) {
+          logWithStyle(`${targetFile} found with :${maxVal} match`, { fg: 'yellow' });
+        }
         if (maxVal < threshold) break;
 
         if (maxVal > threshold) {
-          console.log(`${targetFile} found with :${maxVal} match`);
           totalMatches++;
         }
 
@@ -165,7 +174,10 @@ const find = async (fileName, threshold) => {
 const pullForMe = async () => {
   try {
     while (isRunning) {
-      await findAndClick("draw.png");
+      let draw = await findAndClick("draw.png");
+      while (draw === 0) {
+        draw = await findAndClick("draw.png");
+      }
       const pull = await findAndClick("confirm.png");
 
       if (pull) {

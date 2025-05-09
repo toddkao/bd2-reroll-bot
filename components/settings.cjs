@@ -1,3 +1,4 @@
+const { logWithStyle } = require('./log.cjs');
 const path = require('path');
 const fs = require('fs');
 
@@ -6,6 +7,7 @@ const loadSettings = () => {
   const defaultSettings = {
     fiveStarsToPull: 2,
     fiveStarsToScreenshot: 1,
+    debug: false,
   };
 
   // Create file with defaults if it doesn't exist
@@ -24,14 +26,21 @@ const loadSettings = () => {
     .split(/\r?\n/)
     .filter(Boolean);
 
-  for (const line of lines) {
-    const [key, value] = line.split('=').map(s => s.trim());
-    if (key && value && !isNaN(Number(value))) {
-      settings[key] = Number(value);
+    for (const line of lines) {
+      const [key, value] = line.split('=').map(s => s.trim());
+    
+      if (key && value !== undefined) {
+        if (!isNaN(Number(value))) {
+          settings[key] = Number(value);
+        } else if (value.toLowerCase() === 'true' || value.toLowerCase() === 'false') {
+          settings[key] = value.toLowerCase() === 'true';
+        } else {
+          settings[key] = value;
+        }
+      }
     }
-  }
-
-  console.log('loaded settings', settings);
+  console.log('loaded settings');
+  logWithStyle(JSON.stringify(settings, null, 2), { fg: 'green' });
 
   return settings;
 }
