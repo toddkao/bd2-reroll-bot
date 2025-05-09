@@ -1,2 +1,2 @@
-fiveStarsToPull=2
-fiveStarsToScreenshot=1
+fiveStarsToPull=4
+fiveStarsToScreenshot=3

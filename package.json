@@ -8,6 +8,7 @@
   "dependencies": {
     "@napi-rs/canvas": "^0.1.70",
     "@techstark/opencv-js": "^4.10.0-release.1",
+    "node-global-key-listener": "^0.3.0",
     "robotjs": "^0.6.0"
   },
   "devDependencies": {},
