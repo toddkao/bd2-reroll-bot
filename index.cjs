@@ -167,8 +167,11 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
       while (true) {
         const { maxVal, maxLoc } = cv.minMaxLoc(result);
         if (maxVal < threshold) break;
-      
-        totalMatches++;
+    
+        if (maxVal > threshold) {
+          console.log(`${targetFile} found with :${maxVal} match`);
+          totalMatches++;
+        }
       
         // Zero out the region in the result matrix so it doesn't match again
         const region = result.roi(new cv.Rect(
@@ -201,7 +204,7 @@ const findAndClick = async (fileName, delay = 1000) => {
 
 const find = async (fileName, saveImageIfAtLeastNumberFound, threshold) => {
   const canvas = await captureScreenToCanvas();
-  const numberFound = await matchTemplatesOpenCV(canvas, fileName, false, threshold);
+  const numberFound = await matchTemplatesOpenCV(canvas, fileName, false, 300, threshold);
 
   if (numberFound >= saveImageIfAtLeastNumberFound) {
     saveCanvasImage(canvas, `5star-${numberFound}`);
@@ -233,10 +236,9 @@ const pullForMe = async () => {
 
 
     if (atLeastOneFiveStar) {
-      await new Promise(resolve => setTimeout(resolve, 3_000));
       fiveStarsPulled = await find("5star.png", settings.fiveStarsToScreenshot, 0.95);
       if (fiveStarsPulled > 0) {
-        console.log('five stars pulled', numberFound);
+        console.log('five stars pulled', fiveStarsPulled);
       }
     }
 
@@ -262,7 +264,6 @@ function waitForKeypress(message = '\nPress any key to exit...') {
   return new Promise(resolve => {
     process.stdin.setRawMode(true);
     process.stdin.resume();
-    process.stdout.write(message);
     process.stdin.once('data', () => {
       process.stdin.setRawMode(false);
       process.stdin.pause();
