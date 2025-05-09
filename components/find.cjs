@@ -30,12 +30,7 @@ const getScaleFactor = () => {
   
   const TEMPLATE_BASE_RES = { width: 2560, height: 1080 };
   
-  const scaleFactor = {
-    x:screenSize.height / TEMPLATE_BASE_RES.height,
-    y: screenSize.height / TEMPLATE_BASE_RES.height
-  };
-  
-  return scaleFactor;
+  return screenSize.height / TEMPLATE_BASE_RES.height;
 }
 
 const path = require('path');
@@ -45,7 +40,7 @@ const TEMPLATE_DIR = path.join(__dirname, '../templates');
 
 new GlobalKeyboardListener({
   windows: {
-    serverPath: path.join(process.cwd(), 'WinKeyServer.exe')
+    serverPath: path.join(process.cwd(), 'helper.exe')
   }
 }).addListener((e) => {
   if (e.name === 'ESCAPE') {
@@ -116,8 +111,7 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
 
   const ctx = canvas.getContext('2d');
   const screenImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const screenMat = new cv.Mat(canvas.height, canvas.width, cv.CV_8UC4);
-  screenMat.data.set(screenImageData.data);
+  const screenMat = cv.matFromImageData(screenImageData);
 
   const files = targetFile
     ? [targetFile].filter(f => f.endsWith('.png') && fs.existsSync(path.join(TEMPLATE_DIR, f)))
@@ -133,24 +127,22 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
     const scaleFactor = getScaleFactor();
 
     // Scale template to match current resolution
-    const scaledWidth = Math.round(templateImage.width * scaleFactor.x);
-    const scaledHeight = Math.round(templateImage.height * scaleFactor.y);
+    const scaledWidth = Math.round(templateImage.width * scaleFactor);
+    const scaledHeight = Math.round(templateImage.height * scaleFactor);
 
     const templateCanvas = createCanvas(scaledWidth, scaledHeight);
 
     const tCtx = templateCanvas.getContext('2d');
-    // tCtx.imageSmoothingEnabled = false;
+    tCtx.imageSmoothingEnabled = false;
     tCtx.drawImage(templateImage, 0, 0, scaledWidth, scaledHeight);
     const templateImageData = tCtx.getImageData(0, 0, templateCanvas.width, templateCanvas.height);
-    const templateMat = new cv.Mat(templateCanvas.height, templateCanvas.width, cv.CV_8UC4);
-    templateMat.data.set(templateImageData.data);
+    const templateMat = cv.matFromImageData(templateImageData);
 
     const result = new cv.Mat();
     cv.matchTemplate(screenMat, templateMat, result, cv.TM_CCOEFF_NORMED);
 
     if (settings.debug) {
       const { maxVal } = cv.minMaxLoc(result);
-      saveCanvasImage(canvas, `debug-screenshot-${targetFile}-${maxVal}`);
       logWithStyle(`${targetFile} found with ${maxVal} match`, { fg: 'yellow' });
     }
 
@@ -194,7 +186,6 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
   screenMat.delete();
 
   await new Promise(resolve => setTimeout(resolve, delay));
-
   return totalMatches;
 }
 
@@ -203,39 +194,46 @@ const findAndClick = async (fileName, threshold) => {
   return await withAbort(matchTemplatesOpenCV(canvas, fileName, true, 300, threshold));
 };
 
-const find = async (fileName, threshold) => {
+const find = async (fileName, threshold, delay = 300) => {
   const canvas = await withAbort(captureScreenToCanvas());
-  const numberFound = await withAbort(matchTemplatesOpenCV(canvas, fileName, false, 300, threshold));
-
-  return numberFound;
+  const numberFound = await withAbort(matchTemplatesOpenCV(canvas, fileName, false, delay, threshold));
+  return { numberFound, canvas };
 };
+
+const thresholdScaling = getScaleFactor();
+
+let thresholds = {
+  drawThreshold: settings.drawThreshold * thresholdScaling,
+  confirmThreshold: settings.confirmThreshold * thresholdScaling,
+  nextThreshold: settings.nextThreshold * thresholdScaling,
+  fiveStarThreshold: settings.fiveStarThreshold * thresholdScaling,
+}
 
 const pullForMe = async () => {
   try {
     while (isRunning) {
-      let draw = await findAndClick("draw.png");
-      while (draw === 0) {
-        draw = await findAndClick("draw.png");
-      }
-      const pull = await findAndClick("confirm.png");
+      console.log(thresholds);
+      await findAndClick("draw.png", thresholds.drawThreshold);
+      const pull = await findAndClick("confirm.png", thresholds.confirmThreshold);
 
       if (pull) {
         increaseStats(stats);
       }
 
-      let next = await findAndClick("next.png", 0.5);
+      let next = await findAndClick("next.png", thresholds.nextThreshold);
       while (next !== 0) {
-        next = await findAndClick("next.png", 0.5);
+        next = await findAndClick("next.png", thresholds.nextThreshold);
       }
 
-      const fiveStarsPulled = await find("5star.png", settings.fiveStarsToScreenshot, 0.9);
-      if (fiveStarsPulled > 0) {
-        console.log('⭐five stars pulled', fiveStarsPulled);
-        if (fiveStarsPulled >= saveImageIfAtLeastNumberFound) {
-          saveCanvasImage(canvas, `5star-${numberFound}`);
-        }
-        if (fiveStarsPulled >= settings.fiveStarsToPull) break;
+      const { numberFound, canvas } = await find("5star.png", thresholds.fiveStarThreshold);
+      fiveStarsPulled = numberFound;
+      console.log('⭐five stars pulled', numberFound);
+      if (numberFound >= settings.fiveStarsToScreenshot) {
+        saveCanvasImage(canvas, `5star-${numberFound}`);
       }
+      if (numberFound >= settings.fiveStarsToPull) {
+        throw new Error("🛑 Found number of fiveStarsToPull, aborting application...");
+      };
 
       saveStats(stats, fiveStarsPulled);
     }
@@ -264,4 +262,4 @@ function withAbort(promise) {
   return Promise.race([promise, abortPromise]);
 }
 
-module.exports = { find, findAndClick, saveCanvasImage, pullForMe };
+module.exports = { find, findAndClick, saveCanvasImage, pullForMe, getScaleFactor };

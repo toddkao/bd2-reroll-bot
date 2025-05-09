@@ -8,6 +8,10 @@ const loadSettings = () => {
     fiveStarsToPull: 2,
     fiveStarsToScreenshot: 1,
     debug: false,
+    nextThreshold: 0.7,
+    confirmThreshold: 0.7,
+    drawThreshold: 0.85,
+    fiveStarThreshold: 0.9,
   };
 
   // Create file with defaults if it doesn't exist
