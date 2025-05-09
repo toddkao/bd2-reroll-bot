@@ -45,7 +45,7 @@ const TEMPLATE_DIR = path.join(__dirname, '../templates');
 
 new GlobalKeyboardListener({
   windows: {
-    serverPath: path.join(__dirname, '../WinKeyServer.exe')
+    serverPath: path.join(process.cwd(), 'WinKeyServer.exe')
   }
 }).addListener((e) => {
   if (e.name === 'ESCAPE') {
@@ -123,7 +123,6 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
     ? [targetFile].filter(f => f.endsWith('.png') && fs.existsSync(path.join(TEMPLATE_DIR, f)))
     : fs.readdirSync(TEMPLATE_DIR).filter(f => f.endsWith('.png'));
 
-  console.log(files, TEMPLATE_DIR);
   let totalMatches = 0;
 
   for (const file of files) {
