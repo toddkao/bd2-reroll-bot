@@ -14,7 +14,7 @@
   "devDependencies": {},
   "scripts": {
     "start": "node index.cjs",
-    "build": "pkg . --targets node18-win-x64 --output dist/app",
+    "build": "pkg . --targets node18-win-x64 --output build/app",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
