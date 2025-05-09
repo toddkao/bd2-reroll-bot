@@ -1,2 +1,3 @@
 fiveStarsToPull=4
 fiveStarsToScreenshot=3
+debug=true

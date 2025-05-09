@@ -7,15 +7,45 @@ const { increaseStats, saveStats } = require('./stats.cjs');
 const { loadSettings } = require('./settings.cjs');
 const { loadStats } = require('./stats.cjs');
 const { GlobalKeyboardListener } = require('node-global-key-listener');
+const { windowManager } = require('node-window-manager');
+
+const windows = windowManager.getWindows();
+const targetWindow = windows.find(w => w.getTitle().toLowerCase().includes('browndust'));
+targetWindow.bringToTop();
+
+const getScaleFactor = () => {
+  const windows = windowManager.getWindows();
+  const targetWindow = windows.find(w => w.getTitle().toLowerCase().includes('browndust'));
+  
+  if (!targetWindow) {
+    console.log('❌ Window not found');
+  }
+  
+  targetWindow.bringToTop();
+
+  const screenSize = {
+    width: targetWindow.getBounds().width,
+    height: targetWindow.getBounds().height,
+  }
+  
+  const TEMPLATE_BASE_RES = { width: 2560, height: 1080 };
+  
+  const scaleFactor = {
+    x:screenSize.height / TEMPLATE_BASE_RES.height,
+    y: screenSize.height / TEMPLATE_BASE_RES.height
+  };
+  
+  return scaleFactor;
+}
 
 const path = require('path');
 const fs = require('fs');
 
-const TEMPLATE_DIR = path.join(process.cwd(), 'templates');
+const TEMPLATE_DIR = path.join(__dirname, '../templates');
 
 new GlobalKeyboardListener({
   windows: {
-    serverPath: path.join(process.cwd(), 'WinKeyServer.exe')
+    serverPath: path.join(__dirname, '../WinKeyServer.exe')
   }
 }).addListener((e) => {
   if (e.name === 'ESCAPE') {
@@ -81,7 +111,7 @@ function saveCanvasImage(canvas, label = 'screenshot') {
   }
 }
 
-async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, delay = 300, threshold = 0.85) {
+async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, delay = 300, threshold = 0.6) {
   await waitForOpenCV();
 
   const ctx = canvas.getContext('2d');
@@ -93,15 +123,25 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
     ? [targetFile].filter(f => f.endsWith('.png') && fs.existsSync(path.join(TEMPLATE_DIR, f)))
     : fs.readdirSync(TEMPLATE_DIR).filter(f => f.endsWith('.png'));
 
+  console.log(files, TEMPLATE_DIR);
   let totalMatches = 0;
 
   for (const file of files) {
     const templatePath = path.join(TEMPLATE_DIR, file);
     const fileBuffer = fs.readFileSync(templatePath);
     const templateImage = await loadImage(fileBuffer);
-    const templateCanvas = createCanvas(templateImage.width, templateImage.height);
+
+    const scaleFactor = getScaleFactor();
+
+    // Scale template to match current resolution
+    const scaledWidth = Math.round(templateImage.width * scaleFactor.x);
+    const scaledHeight = Math.round(templateImage.height * scaleFactor.y);
+
+    const templateCanvas = createCanvas(scaledWidth, scaledHeight);
+
     const tCtx = templateCanvas.getContext('2d');
-    tCtx.drawImage(templateImage, 0, 0);
+    // tCtx.imageSmoothingEnabled = false;
+    tCtx.drawImage(templateImage, 0, 0, scaledWidth, scaledHeight);
     const templateImageData = tCtx.getImageData(0, 0, templateCanvas.width, templateCanvas.height);
     const templateMat = new cv.Mat(templateCanvas.height, templateCanvas.width, cv.CV_8UC4);
     templateMat.data.set(templateImageData.data);
@@ -109,12 +149,15 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
     const result = new cv.Mat();
     cv.matchTemplate(screenMat, templateMat, result, cv.TM_CCOEFF_NORMED);
 
+    if (settings.debug) {
+      const { maxVal } = cv.minMaxLoc(result);
+      saveCanvasImage(canvas, `debug-screenshot-${targetFile}-${maxVal}`);
+      logWithStyle(`${targetFile} found with ${maxVal} match`, { fg: 'yellow' });
+    }
+
     if (click) {
       // Just click once on the best match
       const { maxVal, maxLoc } = cv.minMaxLoc(result);
-      if (settings.debug) {
-        logWithStyle(`${targetFile} found with :${maxVal} match`, { fg: 'yellow' });
-      }
       if (maxVal >= threshold) {
         const centerX = maxLoc.x + templateMat.cols / 2;
         const centerY = maxLoc.y + templateMat.rows / 2;
@@ -126,9 +169,6 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
       // Find all matches above threshold
       while (true) {
         const { maxVal, maxLoc } = cv.minMaxLoc(result);
-        if (settings.debug) {
-          logWithStyle(`${targetFile} found with :${maxVal} match`, { fg: 'yellow' });
-        }
         if (maxVal < threshold) break;
 
         if (maxVal > threshold) {
@@ -184,9 +224,9 @@ const pullForMe = async () => {
         increaseStats(stats);
       }
 
-      let next = await findAndClick("next.png", 0.35);
+      let next = await findAndClick("next.png", 0.5);
       while (next !== 0) {
-        next = await findAndClick("next.png", 0.35);
+        next = await findAndClick("next.png", 0.5);
       }
 
       const fiveStarsPulled = await find("5star.png", settings.fiveStarsToScreenshot, 0.9);
