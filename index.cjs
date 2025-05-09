@@ -6,6 +6,42 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 
 const TEMPLATE_DIR = path.join(process.cwd(), 'templates');
 
+const stats = loadStats();
+const settings = loadSettings();
+
+function loadSettings() {
+  const filePath = path.join(process.cwd(), 'settings.txt');
+  const defaultSettings = {
+    fiveStarsToPull: 2,
+    fiveStarsToScreenshot: 1,
+  };
+
+  // Create file with defaults if it doesn't exist
+  if (!fs.existsSync(filePath)) {
+    const defaultText = Object.entries(defaultSettings)
+      .map(([key, val]) => `${key}=${val}`)
+      .join('\n');
+    fs.writeFileSync(filePath, defaultText, 'utf-8');
+    console.log('✅ Created default settings.txt');
+    return { ...defaultSettings };
+  }
+
+  // Load and parse existing settings
+  const settings = { ...defaultSettings };
+  const lines = fs.readFileSync(filePath, 'utf-8')
+    .split(/\r?\n/)
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const [key, value] = line.split('=').map(s => s.trim());
+    if (key && value && !isNaN(Number(value))) {
+      settings[key] = Number(value);
+    }
+  }
+
+  return settings;
+}
+
 function getCurrentHourKey() {
   const now = new Date();
   const date = now.toLocaleDateString('en-US'); // e.g., 5/8/2025
@@ -88,7 +124,7 @@ function saveCanvasImage(canvas, label = 'screenshot') {
   }
 }
 
-async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, delay = 300) {
+async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, delay = 300, threshold = 0.85) {
   await waitForOpenCV();
 
   const ctx = canvas.getContext('2d');
@@ -101,7 +137,6 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
     : fs.readdirSync(TEMPLATE_DIR).filter(f => f.endsWith('.png'));
 
   let totalMatches = 0;
-  const threshold = 0.85;
 
   for (const file of files) {
     const templatePath = path.join(TEMPLATE_DIR, file);
@@ -132,12 +167,19 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
       while (true) {
         const { maxVal, maxLoc } = cv.minMaxLoc(result);
         if (maxVal < threshold) break;
-
+      
         totalMatches++;
-
-        const point1 = new cv.Point(maxLoc.x, maxLoc.y);
-        const point2 = new cv.Point(maxLoc.x + templateMat.cols, maxLoc.y + templateMat.rows);
-        cv.rectangle(result, point1, point2, new cv.Scalar(0), -1); // mask matched area
+      
+        // Zero out the region in the result matrix so it doesn't match again
+        const region = result.roi(new cv.Rect(
+          maxLoc.x,
+          maxLoc.y,
+          templateMat.cols,
+          templateMat.rows
+        ));
+      
+        region.setTo(new cv.Scalar(0));
+        region.delete(); // clean up the sub-matrix
       }
     }
 
@@ -152,23 +194,20 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
   return totalMatches;
 }
 
-const findAndClick = async (fileName) => {
+const findAndClick = async (fileName, delay = 1000) => {
   const canvas = await captureScreenToCanvas();
   return await matchTemplatesOpenCV(canvas, fileName, true);
 };
 
-const find = async (fileName, saveImageIfAtLeastNumberFound) => {
+const find = async (fileName, saveImageIfAtLeastNumberFound, threshold) => {
   const canvas = await captureScreenToCanvas();
-  const numberFound = await matchTemplatesOpenCV(canvas, fileName, false);
+  const numberFound = await matchTemplatesOpenCV(canvas, fileName, false, threshold);
 
-  if (saveImageIfAtLeastNumberFound && numberFound >= saveImageIfAtLeastNumberFound) {
+  if (numberFound >= saveImageIfAtLeastNumberFound) {
     saveCanvasImage(canvas, `5star-${numberFound}`);
-    console.log('five stars pulled', numberFound);
   }
   return numberFound;
 };
-
-const stats = loadStats();
 
 const pullForMe = async () => {
   try {
@@ -194,11 +233,14 @@ const pullForMe = async () => {
 
 
     if (atLeastOneFiveStar) {
-      await new Promise(resolve => setTimeout(resolve, 1_000));
-      fiveStarsPulled = await find("5star.png", 1);
+      await new Promise(resolve => setTimeout(resolve, 3_000));
+      fiveStarsPulled = await find("5star.png", settings.fiveStarsToScreenshot, 0.95);
+      if (fiveStarsPulled > 0) {
+        console.log('five stars pulled', numberFound);
+      }
     }
 
-    if (fiveStarsPulled < 3) {
+    if (fiveStarsPulled < settings.fiveStarsToPull) {
       pullForMe();
     }
 
@@ -216,4 +258,26 @@ const pullForMe = async () => {
   }
 }
 
-pullForMe();
+function waitForKeypress(message = '\nPress any key to exit...') {
+  return new Promise(resolve => {
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdout.write(message);
+    process.stdin.once('data', () => {
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      resolve();
+    });
+  });
+}
+
+const outDir = path.join(process.cwd(), 'screenshots');
+if (!fs.existsSync(outDir)) {
+  fs.mkdirSync(outDir, { recursive: true });
+}
+
+(async () => {
+  console.log(settings);
+  await pullForMe();
+  await waitForKeypress();
+})();

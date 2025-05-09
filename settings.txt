@@ -1,0 +1,2 @@
+fiveStarsToPull=2
+fiveStarsToScreenshot=1
