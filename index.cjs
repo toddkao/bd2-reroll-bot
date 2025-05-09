@@ -56,6 +56,7 @@ const LOG_FILE = path.join(process.cwd(), 'log.txt');
 function loadStats() {
   try {
     const content = fs.readFileSync(LOG_FILE, 'utf-8');
+    console.log(JSON.parse(content));
     return JSON.parse(content);
   } catch {
     return { pulls: 0, fiveStars: {}, hourlyPulls: {} };
@@ -155,6 +156,7 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
     if (click) {
       // Just click once on the best match
       const { maxVal, maxLoc } = cv.minMaxLoc(result);
+      console.log(`${targetFile} found with :${maxVal} match`);
       if (maxVal >= threshold) {
         const centerX = maxLoc.x + templateMat.cols / 2;
         const centerY = maxLoc.y + templateMat.rows / 2;
@@ -197,9 +199,9 @@ async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, del
   return totalMatches;
 }
 
-const findAndClick = async (fileName, delay = 1000) => {
+const findAndClick = async (fileName, threshold) => {
   const canvas = await captureScreenToCanvas();
-  return await matchTemplatesOpenCV(canvas, fileName, true);
+  return await matchTemplatesOpenCV(canvas, fileName, true, 300, threshold);
 };
 
 const find = async (fileName, saveImageIfAtLeastNumberFound, threshold) => {
@@ -226,20 +228,16 @@ const pullForMe = async () => {
       stats.hourlyPulls[hourKey] = (stats.hourlyPulls[hourKey] || 0) + 1;
     }
 
-    const atLeastOneFiveStar = await find("eleanor.png");
     let fiveStarsPulled = 0;
 
-    let next = await findAndClick("next.png") || await findAndClick("darknext.png");
+    let next = await findAndClick("next.png", 0.3);
     while (next !== 0) {
-      next = await findAndClick("next.png") || await findAndClick("darknext.png")
+      next = await findAndClick("next.png", 0.3);
     }
 
-
-    if (atLeastOneFiveStar) {
-      fiveStarsPulled = await find("5star.png", settings.fiveStarsToScreenshot, 0.95);
-      if (fiveStarsPulled > 0) {
-        console.log('five stars pulled', fiveStarsPulled);
-      }
+    fiveStarsPulled = await find("5star.png", settings.fiveStarsToScreenshot, 0.95);
+    if (fiveStarsPulled > 0) {
+      console.log('five stars pulled', fiveStarsPulled);
     }
 
     if (fiveStarsPulled < settings.fiveStarsToPull) {
