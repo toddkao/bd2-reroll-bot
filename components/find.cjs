@@ -106,82 +106,96 @@ function saveCanvasImage(canvas, label = 'screenshot') {
   }
 }
 
-async function matchTemplatesOpenCV(canvas, targetFile = null, click = true, delay = 300, threshold = 0.6) {
+const templateCache = new Map();
+
+function preloadTemplates(files) {
+  for (const file of files) {
+    const templatePath = path.join(TEMPLATE_DIR, file);
+    const buffer = fs.readFileSync(templatePath);
+    loadImage(buffer).then((templateImage) => {
+      const scaleFactor = getScaleFactor();
+      const scaledWidth = Math.round(templateImage.width * scaleFactor);
+      const scaledHeight = Math.round(templateImage.height * scaleFactor);
+      const canvas = createCanvas(scaledWidth, scaledHeight);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(templateImage, 0, 0, scaledWidth, scaledHeight);
+      const data = ctx.getImageData(0, 0, scaledWidth, scaledHeight);
+      templateCache.set(file, cv.matFromImageData(data));
+    });
+  }
+}
+
+async function buildTemplateMat(file) {
+  const templatePath = path.join(TEMPLATE_DIR, file);
+  const fileBuffer = fs.readFileSync(templatePath);
+  const image = await loadImage(fileBuffer);
+
+  const scaleFactor = getScaleFactor();
+  const scaledWidth = Math.round(image.width * scaleFactor);
+  const scaledHeight = Math.round(image.height * scaleFactor);
+
+  const canvas = createCanvas(scaledWidth, scaledHeight);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(image, 0, 0, scaledWidth, scaledHeight);
+  const imageData = ctx.getImageData(0, 0, scaledWidth, scaledHeight);
+
+  const mat = cv.matFromImageData(imageData);
+  templateCache.set(file, mat);
+
+  return mat;
+}
+
+async function matchTemplatesOpenCV(canvas, targetFiles = null, click = true, delay = 300, threshold = 0.6) {
   await waitForOpenCV();
 
   const ctx = canvas.getContext('2d');
   const screenImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const screenMat = cv.matFromImageData(screenImageData);
 
-  const files = targetFile
-    ? [targetFile].filter(f => f.endsWith('.png') && fs.existsSync(path.join(TEMPLATE_DIR, f)))
+  // Normalize targetFiles to an array
+  const files = Array.isArray(targetFiles)
+    ? targetFiles.filter(f => f.endsWith('.png') && fs.existsSync(path.join(TEMPLATE_DIR, f)))
+    : typeof targetFiles === 'string'
+    ? [targetFiles].filter(f => f.endsWith('.png') && fs.existsSync(path.join(TEMPLATE_DIR, f)))
     : fs.readdirSync(TEMPLATE_DIR).filter(f => f.endsWith('.png'));
 
-  let totalMatches = 0;
-
-  for (const file of files) {
-    const templatePath = path.join(TEMPLATE_DIR, file);
-    const fileBuffer = fs.readFileSync(templatePath);
-    const templateImage = await loadImage(fileBuffer);
-
-    const scaleFactor = getScaleFactor();
-
-    // Scale template to match current resolution
-    const scaledWidth = Math.round(templateImage.width * scaleFactor);
-    const scaledHeight = Math.round(templateImage.height * scaleFactor);
-
-    const templateCanvas = createCanvas(scaledWidth, scaledHeight);
-
-    const tCtx = templateCanvas.getContext('2d');
-    tCtx.imageSmoothingEnabled = false;
-    tCtx.drawImage(templateImage, 0, 0, scaledWidth, scaledHeight);
-    const templateImageData = tCtx.getImageData(0, 0, templateCanvas.width, templateCanvas.height);
-    const templateMat = cv.matFromImageData(templateImageData);
-
+  const matchResults = await Promise.all(files.map(async (file) => {
+    const templateMat = templateCache.has(file)
+      ? templateCache.get(file)
+      : await buildTemplateMat(file); // fallback
+  
     const result = new cv.Mat();
     cv.matchTemplate(screenMat, templateMat, result, cv.TM_CCOEFF_NORMED);
-
-    if (settings.debug) {
-      const { maxVal } = cv.minMaxLoc(result);
-      logWithStyle(`${targetFile} found with ${maxVal} match`, { fg: 'yellow' });
-    }
-
+  
+    const matches = [];
+  
     if (click) {
-      // Just click once on the best match
       const { maxVal, maxLoc } = cv.minMaxLoc(result);
       if (maxVal >= threshold) {
         const centerX = maxLoc.x + templateMat.cols / 2;
         const centerY = maxLoc.y + templateMat.rows / 2;
         robot.moveMouse(centerX, centerY);
         robot.mouseClick();
-        totalMatches = 1;
+        matches.push({ file, maxVal });
       }
     } else {
-      // Find all matches above threshold
       while (true) {
         const { maxVal, maxLoc } = cv.minMaxLoc(result);
         if (maxVal < threshold) break;
-
-        if (maxVal > threshold) {
-          totalMatches++;
-        }
-
-        // Zero out the region in the result matrix so it doesn't match again
-        const region = result.roi(new cv.Rect(
-          maxLoc.x,
-          maxLoc.y,
-          templateMat.cols,
-          templateMat.rows
-        ));
-
+  
+        matches.push({ file, maxVal });
+        const region = result.roi(new cv.Rect(maxLoc.x, maxLoc.y, templateMat.cols, templateMat.rows));
         region.setTo(new cv.Scalar(0));
-        region.delete(); // clean up the sub-matrix
+        region.delete();
       }
     }
-
-    templateMat.delete();
+  
     result.delete();
-  }
+  
+    return matches.length;
+  }));
+  
+  const totalMatches = matchResults.reduce((a, b) => a + b, 0);
 
   screenMat.delete();
 
@@ -228,12 +242,33 @@ const pullForMe = async () => {
       const { numberFound, canvas } = await find("5star.png", thresholds.fiveStarThreshold);
       fiveStarsPulled = numberFound;
       console.log('⭐five stars pulled', numberFound);
+
+      if (numberFound > 0) {
+        const files = [
+          'helena.png',
+          'lathel.png',
+          'justia.png',
+          'liberta1.png',
+          'liberta2.png',
+          'luvencia.png',
+          'medicalclub.png',
+          'nebris.png',
+          'refi.png',
+          'zenith.png',
+        ];
+        
+        const { numberFound: score } = await find(files, thresholds.fiveStarThreshold);
+      
+        console.log(`Score of 5 stars is ${score}`);
+  
+        if (score >= settings.targetScore) {
+          throw new Error("🛑 Score is equal to or better than target, aborting application...");
+        };
+      }
+      
       if (numberFound >= settings.fiveStarsToScreenshot) {
         saveCanvasImage(canvas, `5star-${numberFound}`);
       }
-      if (numberFound >= settings.fiveStarsToPull) {
-        throw new Error("🛑 Found number of fiveStarsToPull, aborting application...");
-      };
 
       saveStats(stats, fiveStarsPulled);
     }

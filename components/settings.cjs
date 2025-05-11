@@ -6,9 +6,10 @@ const loadSettings = () => {
   const filePath = path.join(process.cwd(), 'settings.txt');
   const defaultSettings = {
     fiveStarsToPull: 2,
+    targetScore: 3,
     fiveStarsToScreenshot: 1,
     debug: false,
-    nextThreshold: 0.7,
+    nextThreshold: 0.6,
     confirmThreshold: 0.7,
     drawThreshold: 0.85,
     fiveStarThreshold: 0.9,

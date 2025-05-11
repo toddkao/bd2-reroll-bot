@@ -1,7 +1,8 @@
-fiveStarsToPull=2
+fiveStarsToPull=3
 fiveStarsToScreenshot=1
+targetScore=3
 debug=true
-nextThreshold=0.7
+nextThreshold=0.6
 confirmThreshold=0.85
 drawThreshold=0.85
 fiveStarThreshold=0.9
