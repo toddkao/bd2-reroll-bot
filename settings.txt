@@ -5,4 +5,4 @@ debug=true
 nextThreshold=0.6
 confirmThreshold=0.85
 drawThreshold=0.85
-fiveStarThreshold=0.9
+fiveStarThreshold=0.95

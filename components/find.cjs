@@ -243,7 +243,7 @@ const pullForMe = async () => {
       fiveStarsPulled = numberFound;
       console.log('⭐five stars pulled', numberFound);
 
-      if (numberFound > 0) {
+      if (numberFound >= 3) {
         const files = [
           'helena.png',
           'lathel.png',
