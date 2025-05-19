@@ -6,7 +6,7 @@ const loadSettings = () => {
   const filePath = path.join(process.cwd(), 'settings.txt');
   const defaultSettings = {
     fiveStarsToPull: 2,
-    targetScore: 3,
+    targetScore: 2,
     fiveStarsToScreenshot: 1,
     debug: false,
     nextThreshold: 0.6,
