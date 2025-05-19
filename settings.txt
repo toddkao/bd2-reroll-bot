@@ -1,8 +1,11 @@
-fiveStarsToPull=3
+fiveStarsToPull=1
 fiveStarsToScreenshot=1
-targetScore=3
+targetScore=2
 debug=true
 nextThreshold=0.6
 confirmThreshold=0.85
 drawThreshold=0.85
 fiveStarThreshold=0.95
+drawPosition=2102,1001
+confirmPosition=1366,705
+nextPosition=2419,60

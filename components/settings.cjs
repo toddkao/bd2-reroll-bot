@@ -13,6 +13,9 @@ const loadSettings = () => {
     confirmThreshold: 0.7,
     drawThreshold: 0.85,
     fiveStarThreshold: 0.9,
+    drawPosition: undefined,
+    confirmPosition: undefined,
+    nextPosition: undefined,
   };
 
   // Create file with defaults if it doesn't exist

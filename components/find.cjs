@@ -38,6 +38,8 @@ const fs = require('fs');
 
 const TEMPLATE_DIR = path.join(__dirname, '../templates');
 
+const FIVE_STAR_DIR = path.join(process.cwd(), 'target_five_stars');
+
 new GlobalKeyboardListener({
   windows: {
     serverPath: path.join(process.cwd(), 'helper.exe')
@@ -145,14 +147,37 @@ async function buildTemplateMat(file) {
   return mat;
 }
 
-async function matchTemplatesOpenCV(canvas, targetFiles = null, click = true, delay = 300, threshold = 0.6) {
+function getClampedROI(x, y, roiSize, imageWidth, imageHeight) {
+  const half = Math.floor(roiSize / 2);
+  const roiX = Math.max(0, Math.min(imageWidth - 1, x - half));
+  const roiY = Math.max(0, Math.min(imageHeight - 1, y - half));
+  const roiWidth = Math.min(roiSize, imageWidth - roiX);
+  const roiHeight = Math.min(roiSize, imageHeight - roiY);
+  return new cv.Rect(roiX, roiY, roiWidth, roiHeight);
+}
+
+async function matchTemplatesOpenCV(canvas, targetFiles = null, click = true, delay = 300, threshold = 0.8, searchCenter = null, roiSize = 250) {
   await waitForOpenCV();
 
   const ctx = canvas.getContext('2d');
   const screenImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const screenMat = cv.matFromImageData(screenImageData);
 
-  // Normalize targetFiles to an array
+  // Define clamped search area
+  let searchMat = screenMat;
+  let offsetX = 0, offsetY = 0;
+  
+  if (searchCenter) {
+    const [x, y] = searchCenter;
+    const roiRect = getClampedROI(x, y, roiSize, canvas.width, canvas.height);
+  
+    searchMat = screenMat.roi(roiRect);
+
+    offsetX = roiRect.x;
+    offsetY = roiRect.y;
+  }
+
+  // normalize targetFiles
   const files = Array.isArray(targetFiles)
     ? targetFiles.filter(f => f.endsWith('.png') && fs.existsSync(path.join(TEMPLATE_DIR, f)))
     : typeof targetFiles === 'string'
@@ -162,18 +187,19 @@ async function matchTemplatesOpenCV(canvas, targetFiles = null, click = true, de
   const matchResults = await Promise.all(files.map(async (file) => {
     const templateMat = templateCache.has(file)
       ? templateCache.get(file)
-      : await buildTemplateMat(file); // fallback
-  
+      : await buildTemplateMat(file);
+
     const result = new cv.Mat();
-    cv.matchTemplate(screenMat, templateMat, result, cv.TM_CCOEFF_NORMED);
-  
+    cv.matchTemplate(searchMat, templateMat, result, cv.TM_CCOEFF_NORMED);
+
     const matches = [];
-  
+
     if (click) {
       const { maxVal, maxLoc } = cv.minMaxLoc(result);
       if (maxVal >= threshold) {
-        const centerX = maxLoc.x + templateMat.cols / 2;
-        const centerY = maxLoc.y + templateMat.rows / 2;
+        const centerX = offsetX + maxLoc.x + templateMat.cols / 2;
+        const centerY = offsetY + maxLoc.y + templateMat.rows / 2;
+        console.log(targetFiles, centerX, centerY);
         robot.moveMouse(centerX, centerY);
         robot.mouseClick();
         matches.push({ file, maxVal });
@@ -182,33 +208,31 @@ async function matchTemplatesOpenCV(canvas, targetFiles = null, click = true, de
       while (true) {
         const { maxVal, maxLoc } = cv.minMaxLoc(result);
         if (maxVal < threshold) break;
-  
+
         matches.push({ file, maxVal });
         const region = result.roi(new cv.Rect(maxLoc.x, maxLoc.y, templateMat.cols, templateMat.rows));
         region.setTo(new cv.Scalar(0));
         region.delete();
       }
     }
-  
+
     result.delete();
-  
     return matches.length;
   }));
-  
-  const totalMatches = matchResults.reduce((a, b) => a + b, 0);
 
+  if (searchMat !== screenMat) searchMat.delete();
   screenMat.delete();
 
   await new Promise(resolve => setTimeout(resolve, delay));
-  return totalMatches;
+  return matchResults.reduce((a, b) => a + b, 0);
 }
 
-const findAndClick = async (fileName, threshold) => {
+const findAndClick = async (fileName, threshold, searchCenter, roiSize) => {
   const canvas = await withAbort(captureScreenToCanvas());
-  return await withAbort(matchTemplatesOpenCV(canvas, fileName, true, 300, threshold));
+  return await withAbort(matchTemplatesOpenCV(canvas, fileName, true, 300, threshold, searchCenter, roiSize));
 };
 
-const find = async (fileName, threshold, delay = 300) => {
+const find = async (fileName, threshold, delay = 300, searchCenter, roiSize) => {
   const canvas = await withAbort(captureScreenToCanvas());
   const numberFound = await withAbort(matchTemplatesOpenCV(canvas, fileName, false, delay, threshold));
   return { numberFound, canvas };
@@ -224,42 +248,39 @@ let thresholds = {
 }
 
 const pullForMe = async () => {
+  const { drawPosition, confirmPosition, nextPosition } = settings;
+  const files = fs.readdirSync(FIVE_STAR_DIR)
+  .filter(f => f.endsWith('.png'));
+
+  logWithStyle(`target 5 stars: ${JSON.stringify(files, null, 2)}`, { fg: 'green' });
+
   try {
     while (isRunning) {
-      console.log(thresholds);
-      await findAndClick("draw.png", thresholds.drawThreshold);
-      const pull = await findAndClick("confirm.png", thresholds.confirmThreshold);
+      await findAndClick("draw.png", thresholds.drawThreshold, drawPosition?.split(','));
+
+      const pull = await findAndClick("confirm.png", thresholds.confirmThreshold, confirmPosition?.split(','), 200);
 
       if (pull) {
         increaseStats(stats);
       }
 
-      let next = await findAndClick("next.png", thresholds.nextThreshold);
+      let next = await findAndClick("next.png", thresholds.nextThreshold, nextPosition?.split(','), 50);
       while (next !== 0) {
-        next = await findAndClick("next.png", thresholds.nextThreshold);
+        next = await findAndClick("next.png", thresholds.nextThreshold, nextPosition?.split(','), 50);
       }
+
+      await new Promise(resolve => setTimeout(resolve, 1_000));
 
       const { numberFound, canvas } = await find("5star.png", thresholds.fiveStarThreshold);
       fiveStarsPulled = numberFound;
-      console.log('⭐five stars pulled', numberFound);
 
-      if (numberFound >= 3) {
-        const files = [
-          'helena.png',
-          'lathel.png',
-          'justia.png',
-          'liberta1.png',
-          'liberta2.png',
-          'luvencia.png',
-          'medicalclub.png',
-          'nebris.png',
-          'refi.png',
-          'zenith.png',
-        ];
-        
-        const { numberFound: score } = await find(files, thresholds.fiveStarThreshold);
+      logWithStyle(`⭐five stars pulled ${numberFound}`, { fg: 'black', bg: 'white'});
+
+      if (numberFound >= settings.fiveStarsToPull) {
       
-        console.log(`Score of 5 stars is ${score}`);
+      const { numberFound: score } = await find(files, thresholds.fiveStarThreshold);
+      
+        logWithStyle(`Number of target 5 stars pulled: ${score}`, { fg: 'black', bg: 'white'});
   
         if (score >= settings.targetScore) {
           throw new Error("🛑 Score is equal to or better than target, aborting application...");
@@ -274,7 +295,7 @@ const pullForMe = async () => {
     }
   } catch (err) {
     if (err.message === 'aborted') {
-      console.log('🛑 Aborted application');
+      logWithStyle('🛑 Aborted application', { fg: 'black', bg: 'red'});
     } else {
       console.error(err);
     }
